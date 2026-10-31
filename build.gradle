@@ -1,0 +1,55 @@
+plugins {
+    id 'com.android.application'
+}
+
+def cfg = new Properties()
+def cfgFile = rootProject.file('app-config.properties')
+if (cfgFile.exists()) { cfgFile.withInputStream { cfg.load(it) } }
+def q = { String s -> '"' + (s ?: '').trim().replace('\\', '\\\\').replace('"', '\\"') + '"' }
+def runNumber = Integer.parseInt(System.getenv('GITHUB_RUN_NUMBER') ?: '1')
+
+android {
+    namespace 'net.room309.stations'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'net.room309.stations'
+        minSdk 23
+        targetSdk 34
+        versionCode runNumber
+        versionName "1." + runNumber
+        buildConfigField 'String', 'SERVER_URL', q(cfg.getProperty('SERVER_URL', ''))
+        buildConfigField 'String', 'SETTINGS_PIN', q(cfg.getProperty('SETTINGS_PIN', '3090'))
+    }
+
+    buildFeatures { buildConfig true }
+
+    signingConfigs {
+        shared {
+            storeFile rootProject.file('station-key.jks')
+            storePassword 'room309stations'
+            keyAlias 'station'
+            keyPassword 'room309stations'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.shared
+        }
+        debug {
+            signingConfig signingConfigs.shared
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
