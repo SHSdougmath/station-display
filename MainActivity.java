@@ -29,6 +29,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.webkit.WebView;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -89,6 +90,8 @@ public class MainActivity extends Activity {
     private FrameLayout card;
     private TextView badge, roundTv, timerTv, problemTv, bigNum, bigName, bigMsg, moveBig, moveMsg, moveCount, pausedTv;
     private ImageView problemImg;
+    private WebView mathView;
+    private StickWalkerView walker;
     private View dot;
     private float density;
 
@@ -295,6 +298,21 @@ public class MainActivity extends Activity {
         problemTv.setLineSpacing(0, 1.15f);
         card.addView(problemTv, new FrameLayout.LayoutParams(-1, -1));
 
+        mathView = new WebView(this);
+        mathView.getSettings().setJavaScriptEnabled(true);
+        mathView.setBackgroundColor(Color.WHITE);
+        mathView.setVerticalScrollBarEnabled(false);
+        mathView.setHorizontalScrollBarEnabled(false);
+        mathView.setFocusable(false);
+        mathView.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent e) {
+                return true;   // no scrolling or zooming
+            }
+        });
+        mathView.setVisibility(View.GONE);
+        card.addView(mathView, new FrameLayout.LayoutParams(-1, -1));
+
         problemImg = new ImageView(this);
         problemImg.setScaleType(ImageView.ScaleType.FIT_CENTER);
         problemImg.setVisibility(View.GONE);
@@ -334,15 +352,19 @@ public class MainActivity extends Activity {
         moveLayout = new LinearLayout(this);
         moveLayout.setOrientation(LinearLayout.VERTICAL);
         moveLayout.setGravity(Gravity.CENTER);
-        moveLayout.setBackgroundColor(0xF5FFD166);
+        moveLayout.setBackgroundColor(GOLD);
         moveBig = text(NAVY, true);
         moveBig.setText("MOVE!");
-        moveMsg = text(NAVY, false);
-        moveMsg.setText("Go to your next station");
+        moveMsg = text(NAVY, true);
+        moveMsg.setText("Move to your next station");
         moveCount = text(NAVY, true);
         moveLayout.addView(moveBig, new LinearLayout.LayoutParams(-2, -2));
+        walker = new StickWalkerView(this, NAVY);
+        LinearLayout.LayoutParams wl = new LinearLayout.LayoutParams(-1, dp(160));
+        wl.topMargin = dp(8);
+        moveLayout.addView(walker, wl);
         LinearLayout.LayoutParams mm = new LinearLayout.LayoutParams(-2, -2);
-        mm.topMargin = dp(16);
+        mm.topMargin = dp(8);
         moveLayout.addView(moveMsg, mm);
         LinearLayout.LayoutParams mc = new LinearLayout.LayoutParams(-2, -2);
         mc.topMargin = dp(16);
@@ -416,9 +438,12 @@ public class MainActivity extends Activity {
         bigNum.setTextSize(TypedValue.COMPLEX_UNIT_PX, h * 0.38f);
         bigName.setTextSize(TypedValue.COMPLEX_UNIT_PX, vmin * 6f);
         bigMsg.setTextSize(TypedValue.COMPLEX_UNIT_PX, vmin * 4.5f);
-        moveBig.setTextSize(TypedValue.COMPLEX_UNIT_PX, vmin * 20f);
-        moveMsg.setTextSize(TypedValue.COMPLEX_UNIT_PX, vmin * 6f);
-        moveCount.setTextSize(TypedValue.COMPLEX_UNIT_PX, vmin * 14f);
+        moveBig.setTextSize(TypedValue.COMPLEX_UNIT_PX, vmin * 11f);
+        moveMsg.setTextSize(TypedValue.COMPLEX_UNIT_PX, vmin * 6.5f);
+        moveCount.setTextSize(TypedValue.COMPLEX_UNIT_PX, vmin * 10f);
+        ViewGroup.LayoutParams wlp = walker.getLayoutParams();
+        wlp.height = Math.round(h * 0.42f);
+        walker.setLayoutParams(wlp);
     }
 
     /** Make the problem text as big as fits: whole lines first, wrapping only if that gets too small. */
@@ -616,6 +641,16 @@ public class MainActivity extends Activity {
                 problemTv.setVisibility(View.GONE);
                 problemImg.setImageBitmap(r.bmp);
                 problemImg.setVisibility(View.VISIBLE);
+            } else if (r.text != null && r.text.indexOf('$') >= 0) {
+                // Math: rendered by KaTeX in a small built-in web view
+                showingImage = true;           // fitText() leaves it alone; the page sizes itself
+                contentText = "";
+                problemTv.setText("");
+                problemTv.setVisibility(View.GONE);
+                problemImg.setImageDrawable(null);
+                problemImg.setVisibility(View.GONE);
+                mathView.loadDataWithBaseURL("file:///android_asset/katex/", mathPage(r.text), "text/html", "UTF-8", null);
+                mathView.setVisibility(View.VISIBLE);
             } else {
                 showingImage = false;
                 contentText = r.text == null ? "" : r.text;
@@ -624,6 +659,9 @@ public class MainActivity extends Activity {
                 problemTv.setText(contentText);
                 problemTv.setVisibility(View.VISIBLE);
                 fitText();
+            }
+            if (!(r.text != null && r.text.indexOf('$') >= 0) || "img".equals(r.type)) {
+                mathView.setVisibility(View.GONE);
             }
         }
         if (st.has("brightness")) applyBrightness(st.optInt("brightness", 0));
@@ -640,6 +678,44 @@ public class MainActivity extends Activity {
         }
         render();
     }
+
+    // ------------------------------------------------------------------ math
+
+    /** A tiny page that renders $...$ parts with KaTeX and sizes everything to fill the card. */
+    private static String mathPage(String text) {
+        return "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+                + "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+                + "<link rel='stylesheet' href='katex.min.css'>"
+                + "<script src='katex.min.js'></script>"
+                + "<style>html,body{margin:0;height:100%;overflow:hidden;background:#fff;color:#111;"
+                + "font-family:Roboto,Arial,sans-serif}"
+                + "body{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-align:center;-webkit-align-items:center;"
+                + "align-items:center;-webkit-box-pack:center;-webkit-justify-content:center;justify-content:center}"
+                + "#c{display:inline-block;text-align:center;line-height:1.3}"
+                + ".ln{margin:0.12em 0}</style></head><body><div id='c'></div><script>"
+                + "var SRC=" + JSONObject.quote(text) + ";"
+                + MATH_JS
+                + "</script></body></html>";
+    }
+
+    // Splits each line into text and $math$ parts, renders math with KaTeX, then finds the biggest size that fits.
+    private static final String MATH_JS =
+            "var box=document.getElementById('c');"
+            + "function add(el,s,math){if(!s)return;if(math&&window.katex){var sp=document.createElement('span');"
+            + "try{katex.render('\\\\displaystyle '+s,sp,{throwOnError:false});}catch(e){sp.textContent=s;}el.appendChild(sp);}"
+            + "else{el.appendChild(document.createTextNode(s));}}"
+            + "function build(){box.innerHTML='';var lines=SRC.split('\\n');for(var k=0;k<lines.length;k++){"
+            + "var line=lines[k],div=document.createElement('div'),buf='',math=false,i=0;div.className='ln';"
+            + "while(i<line.length){var ch=line.charAt(i);"
+            + "if(ch==='\\\\'&&line.charAt(i+1)==='$'){buf+=math?'\\\\$':'$';i+=2;continue;}"
+            + "if(ch==='$'){add(div,buf,math);buf='';math=!math;i++;continue;}buf+=ch;i++;}"
+            + "add(div,buf,math);if(!div.firstChild)div.innerHTML='&nbsp;';box.appendChild(div);}}"
+            + "function fit(){var W=window.innerWidth*0.97,H=window.innerHeight*0.97,modes=['nowrap','normal'];"
+            + "for(var m=0;m<2;m++){var lines=box.querySelectorAll('.ln');for(var j=0;j<lines.length;j++)lines[j].style.whiteSpace=modes[m];"
+            + "box.style.width=m?W+'px':'auto';var lo=8,hi=H;for(var n=0;n<16;n++){var mid=(lo+hi)/2;box.style.fontSize=mid+'px';"
+            + "if(box.scrollWidth<=W&&box.offsetWidth<=W&&box.scrollHeight<=H)lo=mid;else hi=mid;}"
+            + "box.style.fontSize=lo+'px';if(lo>=H/9)break;}}"
+            + "build();fit();window.onresize=fit;window.onload=fit;setTimeout(fit,300);setTimeout(fit,1200);";
 
     // ------------------------------------------------------------------ drawing
 
