@@ -649,7 +649,7 @@ public class MainActivity extends Activity {
                 problemTv.setVisibility(View.GONE);
                 problemImg.setImageDrawable(null);
                 problemImg.setVisibility(View.GONE);
-                mathView.loadDataWithBaseURL("file:///android_asset/katex/", mathPage(r.text), "text/html", "UTF-8", null);
+                mathView.loadDataWithBaseURL("file:///android_asset/mathjax/", mathPage(r.text), "text/html", "UTF-8", null);
                 mathView.setVisibility(View.VISIBLE);
             } else {
                 showingImage = false;
@@ -681,12 +681,16 @@ public class MainActivity extends Activity {
 
     // ------------------------------------------------------------------ math
 
-    /** A tiny page that renders $...$ parts with KaTeX and sizes everything to fill the card. */
+    /** A tiny page that renders $...$ parts with MathJax (SVG output) and sizes everything to fill the card. */
     private static String mathPage(String text) {
         return "<!DOCTYPE html><html><head><meta charset='utf-8'>"
                 + "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-                + "<link rel='stylesheet' href='katex.min.css'>"
-                + "<script src='katex.min.js'></script>"
+                + "<script type='text/x-mathjax-config'>"
+                + "MathJax.Hub.Config({config:['TeX-AMS_SVG-full.js'],showMathMenu:false,messageStyle:'none',menuSettings:{zoom:'None'},"
+                + "tex2jax:{inlineMath:[['\\\\(','\\\\)']],displayMath:[],processEscapes:false},"
+                + "SVG:{font:'TeX',linebreaks:{automatic:false},blacker:1},skipStartupTypeset:true});"
+                + "</script>"
+                + "<script src='MathJax.js'></script>"
                 + "<style>html,body{margin:0;height:100%;overflow:hidden;background:#fff;color:#111;"
                 + "font-family:Roboto,Arial,sans-serif}"
                 + "body{display:-webkit-box;display:-webkit-flex;display:flex;-webkit-box-align:center;-webkit-align-items:center;"
@@ -698,12 +702,11 @@ public class MainActivity extends Activity {
                 + "</script></body></html>";
     }
 
-    // Splits each line into text and $math$ parts, renders math with KaTeX, then finds the biggest size that fits.
+    // Splits each line into text and $math$ parts, has MathJax draw the math, then finds the biggest size that fits.
     private static final String MATH_JS =
             "var box=document.getElementById('c');"
-            + "function add(el,s,math){if(!s)return;if(math&&window.katex){var sp=document.createElement('span');"
-            + "try{katex.render('\\\\displaystyle '+s,sp,{throwOnError:false});}catch(e){sp.textContent=s;}el.appendChild(sp);}"
-            + "else{el.appendChild(document.createTextNode(s));}}"
+            + "function add(el,s,math){if(!s)return;"
+            + "el.appendChild(document.createTextNode(math?'\\\\(\\\\displaystyle '+s+'\\\\)':s));}"
             + "function build(){box.innerHTML='';var lines=SRC.split('\\n');for(var k=0;k<lines.length;k++){"
             + "var line=lines[k],div=document.createElement('div'),buf='',math=false,i=0;div.className='ln';"
             + "while(i<line.length){var ch=line.charAt(i);"
@@ -715,7 +718,9 @@ public class MainActivity extends Activity {
             + "box.style.width=m?W+'px':'auto';var lo=8,hi=H;for(var n=0;n<16;n++){var mid=(lo+hi)/2;box.style.fontSize=mid+'px';"
             + "if(box.scrollWidth<=W&&box.offsetWidth<=W&&box.scrollHeight<=H)lo=mid;else hi=mid;}"
             + "box.style.fontSize=lo+'px';if(lo>=H/9)break;}}"
-            + "build();fit();window.onresize=fit;window.onload=fit;setTimeout(fit,300);setTimeout(fit,1200);";
+            + "build();window.onresize=fit;"
+            + "if(window.MathJax&&MathJax.Hub){MathJax.Hub.Queue(['Typeset',MathJax.Hub,box],fit);}else{fit();}"
+            + "setTimeout(fit,1500);setTimeout(fit,4000);";
 
     // ------------------------------------------------------------------ drawing
 
