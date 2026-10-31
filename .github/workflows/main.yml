@@ -19,11 +19,106 @@ jobs:
         with:
           gradle-version: '8.7'
 
+      - name: Sort the files into an Android project
+        env:
+          ICON: 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
+        run: |
+          set -e
+          P=proj
+          rm -rf $P
+          mkdir -p $P/app/src/main/java/net/room309/stations $P/app/src/main/res/xml $P/app/src/main/res/mipmap-xxhdpi
+          cp MainActivity.java BootReceiver.java AdminReceiver.java $P/app/src/main/java/net/room309/stations/
+          cp AndroidManifest.xml $P/app/src/main/
+          cp device_admin.xml $P/app/src/main/res/xml/
+          cp app-config.properties $P/
+          echo "$ICON" | base64 -d > $P/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+          if [ -f station-key.jks ]; then
+            cp station-key.jks $P/
+          else
+            echo "::warning::station-key.jks is missing, so this build uses a temporary key. Upload station-key.jks so app updates install over the old version."
+            keytool -genkeypair -keystore $P/station-key.jks -storepass room309stations -keypass room309stations -alias station -keyalg RSA -keysize 2048 -validity 20000 -dname "CN=Station Display, O=Room 309"
+          fi
+
+          cat > $P/settings.gradle <<'GRADLE'
+          pluginManagement {
+              repositories { google(); mavenCentral(); gradlePluginPortal() }
+          }
+          dependencyResolutionManagement {
+              repositories { google(); mavenCentral() }
+          }
+          rootProject.name = "StationDisplay"
+          include ':app'
+          GRADLE
+
+          cat > $P/build.gradle <<'GRADLE'
+          plugins {
+              id 'com.android.application' version '8.5.2' apply false
+          }
+          GRADLE
+
+          printf 'org.gradle.jvmargs=-Xmx2g\nandroid.nonTransitiveRClass=true\n' > $P/gradle.properties
+
+          cat > $P/app/build.gradle <<'GRADLE'
+          plugins {
+              id 'com.android.application'
+          }
+
+          def cfg = new Properties()
+          def cfgFile = rootProject.file('app-config.properties')
+          if (cfgFile.exists()) { cfgFile.withInputStream { cfg.load(it) } }
+          def q = { String s -> '"' + (s ?: '').trim().replace('\\', '\\\\').replace('"', '\\"') + '"' }
+          def runNumber = Integer.parseInt(System.getenv('GITHUB_RUN_NUMBER') ?: '1')
+
+          android {
+              namespace 'net.room309.stations'
+              compileSdk 34
+
+              defaultConfig {
+                  applicationId 'net.room309.stations'
+                  minSdk 23
+                  targetSdk 34
+                  versionCode runNumber
+                  versionName "1." + runNumber
+                  buildConfigField 'String', 'SERVER_URL', q(cfg.getProperty('SERVER_URL', ''))
+                  buildConfigField 'String', 'SETTINGS_PIN', q(cfg.getProperty('SETTINGS_PIN', '3090'))
+              }
+
+              buildFeatures { buildConfig true }
+
+              signingConfigs {
+                  shared {
+                      storeFile rootProject.file('station-key.jks')
+                      storePassword 'room309stations'
+                      keyAlias 'station'
+                      keyPassword 'room309stations'
+                  }
+              }
+
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                      signingConfig signingConfigs.shared
+                  }
+              }
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_1_8
+                  targetCompatibility JavaVersion.VERSION_1_8
+              }
+
+              lint {
+                  abortOnError false
+                  checkReleaseBuilds false
+              }
+          }
+          GRADLE
+
       - name: Build the APK
+        working-directory: proj
         run: gradle assembleRelease --no-daemon --stacktrace
 
       - name: Name the APK
-        run: cp app/build/outputs/apk/release/app-release.apk StationDisplay.apk
+        run: cp proj/app/build/outputs/apk/release/app-release.apk StationDisplay.apk
 
       - uses: actions/upload-artifact@v4
         with:
