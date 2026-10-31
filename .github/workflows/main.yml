@@ -28,10 +28,17 @@ jobs:
           rm -rf $P
           mkdir -p $P/app/src/main/java/net/room309/stations $P/app/src/main/res/xml $P/app/src/main/res/mipmap-xxhdpi
           cp *.java $P/app/src/main/java/net/room309/stations/
-          mkdir -p $P/app/src/main/assets/katex
-          (cd /tmp && npm pack katex@0.13.24 --silent && tar xzf katex-0.13.24.tgz)
-          cp /tmp/package/dist/katex.min.js /tmp/package/dist/katex.min.css $P/app/src/main/assets/katex/
-          cp -r /tmp/package/dist/fonts $P/app/src/main/assets/katex/
+          # Math engine: MathJax 2.7 with SVG output (works on old Android browsers)
+          (cd /tmp && rm -rf package && npm pack mathjax@2.7.9 --silent && tar xzf mathjax-2.7.9.tgz)
+          M=$P/app/src/main/assets/mathjax
+          mkdir -p $M/config $M/jax/output/SVG/fonts $M/localization
+          cp /tmp/package/MathJax.js $M/
+          cp /tmp/package/config/TeX-AMS_SVG-full.js $M/config/
+          cp /tmp/package/jax/output/SVG/config.js /tmp/package/jax/output/SVG/jax.js $M/jax/output/SVG/
+          cp -r /tmp/package/jax/output/SVG/autoload $M/jax/output/SVG/
+          cp -r /tmp/package/jax/output/SVG/fonts/TeX $M/jax/output/SVG/fonts/
+          cp -r /tmp/package/extensions $M/
+          cp -r /tmp/package/localization/en $M/localization/
           cp AndroidManifest.xml $P/app/src/main/
           cp device_admin.xml $P/app/src/main/res/xml/
           cp app-config.properties $P/
