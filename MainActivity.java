@@ -17,6 +17,8 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
+import android.net.wifi.WifiManager;
 import android.provider.Settings;
 import android.text.InputType;
 import android.text.Layout;
@@ -86,6 +88,7 @@ public class MainActivity extends Activity {
     // Views
     private FrameLayout root;
     private LinearLayout mainLayout, idleLayout, moveLayout;
+    private FrameLayout sleepLayout;
     private LinearLayout bar;
     private FrameLayout card;
     private TextView badge, roundTv, timerTv, problemTv, bigNum, bigName, bigMsg, moveBig, moveMsg, moveCount, pausedTv;
@@ -121,6 +124,7 @@ public class MainActivity extends Activity {
         applyOrientation();
         setupDeviceOwnerIfAllowed();
         hideSystemBars();
+        holdListeningLocks();
 
         if (!prefs.contains(P_STATION) || serverUrl().length() == 0) {
             ui.postDelayed(new Runnable() {
@@ -129,7 +133,15 @@ public class MainActivity extends Activity {
                     showSettings(true);
                 }
             }, 400);
+        } else {
+            ui.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    askScreenOffPermissionOnce();
+                }
+            }, 1500);
         }
+        startPolling();
     }
 
     @Override
@@ -145,8 +157,141 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
-        stopPolling();
+        // Keep polling while the screen is off, so Wake / Start from the controller can turn it back on.
         ui.removeCallbacks(ticker);
+    }
+
+    @Override
+    protected void onDestroy() {
+        stopPolling();
+        releaseListeningLocks();
+        super.onDestroy();
+    }
+
+    // ------------------------------------------------------------------ sleep / wake
+
+    private PowerManager.WakeLock cpuLock;
+    private WifiManager.WifiLock wifiLock;
+    private boolean asleep = false;
+    private Boolean lastSleep = null;
+    private long lastEpoch = -1;
+    private String lastStatus = "";
+
+    /** Keeps the processor and Wi-Fi running while the screen is off, so the tablet still hears the controller. */
+    @SuppressWarnings("deprecation")
+    private void holdListeningLocks() {
+        try {
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            cpuLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "station:listen");
+            cpuLock.setReferenceCounted(false);
+            cpuLock.acquire();
+        } catch (Exception ignored) {
+        }
+        try {
+            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "station:wifi");
+            wifiLock.setReferenceCounted(false);
+            wifiLock.acquire();
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void releaseListeningLocks() {
+        try {
+            if (cpuLock != null && cpuLock.isHeld()) cpuLock.release();
+        } catch (Exception ignored) {
+        }
+        try {
+            if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
+        } catch (Exception ignored) {
+        }
+    }
+
+    private boolean canTurnScreenOff() {
+        try {
+            DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(Context.DEVICE_POLICY_SERVICE);
+            return dpm != null && dpm.isAdminActive(admin());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** One-time Android prompt that lets the app switch the screen off. */
+    private void askScreenOffPermission() {
+        try {
+            Intent i = new Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN);
+            i.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, admin());
+            i.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                    "Lets your teacher turn this station screen off and back on from the controller.");
+            startActivity(i);
+        } catch (Exception e) {
+            Toast.makeText(this, "Couldn't open the permission screen.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void askScreenOffPermissionOnce() {
+        if (canTurnScreenOff() || prefs.getBoolean("asked_screen_off", false)) return;
+        prefs.edit().putBoolean("asked_screen_off", true).apply();
+        askScreenOffPermission();
+    }
+
+    private static boolean isActive(String status) {
+        return "running".equals(status) || "moving".equals(status);
+    }
+
+    /** Decide whether the controller just asked us to sleep or wake. */
+    private void checkSleepWake() {
+        boolean sleep = st.optBoolean("sleep", false);
+        long epoch = st.optLong("epoch", 0);
+        String status = st.optString("status", "idle");
+        if (lastSleep == null) {
+            if (sleep) goToSleep();
+        } else if (sleep && !lastSleep) {
+            goToSleep();
+        } else if (!sleep && (lastSleep || epoch != lastEpoch || (isActive(status) && !isActive(lastStatus)))) {
+            wakeUp();
+        }
+        lastSleep = sleep;
+        lastEpoch = epoch;
+        lastStatus = status;
+    }
+
+    private void goToSleep() {
+        asleep = true;
+        sleepLayout.setVisibility(View.VISIBLE);
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        WindowManager.LayoutParams lp = getWindow().getAttributes();
+        lp.screenBrightness = 0.01f;
+        getWindow().setAttributes(lp);
+        if (canTurnScreenOff()) {
+            try {
+                DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(Context.DEVICE_POLICY_SERVICE);
+                dpm.lockNow();
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private void wakeUp() {
+        boolean wasAsleep = asleep;
+        asleep = false;
+        sleepLayout.setVisibility(View.GONE);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        if (wasAsleep) {
+            WindowManager.LayoutParams lp = getWindow().getAttributes();
+            lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
+            getWindow().setAttributes(lp);
+        }
+        if (st != null && st.has("brightness")) applyBrightness(st.optInt("brightness", 0));
+        try {
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            PowerManager.WakeLock wl = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK
+                    | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE, "station:wake");
+            wl.acquire(5000);
+        } catch (Exception ignored) {
+        }
+        hideSystemBars();
     }
 
     @Override
@@ -180,7 +325,7 @@ public class MainActivity extends Activity {
     }
 
     private void applyBrightness(int pct) {
-        if (pct < 1 || pct > 100) return;
+        if (asleep || pct < 1 || pct > 100) return;
         WindowManager.LayoutParams lp = getWindow().getAttributes();
         float want = Math.max(0.02f, pct / 100f);
         if (Math.abs(lp.screenBrightness - want) > 0.001f) {
@@ -371,6 +516,12 @@ public class MainActivity extends Activity {
         moveLayout.addView(moveCount, mc);
         moveLayout.setVisibility(View.GONE);
         root.addView(moveLayout, new FrameLayout.LayoutParams(-1, -1));
+
+        // ---- sleep: plain black, used when the controller puts the displays to sleep
+        sleepLayout = new FrameLayout(this);
+        sleepLayout.setBackgroundColor(Color.BLACK);
+        sleepLayout.setVisibility(View.GONE);
+        root.addView(sleepLayout, new FrameLayout.LayoutParams(-1, -1));
 
         // ---- connection dot
         dot = new View(this);
@@ -664,6 +815,7 @@ public class MainActivity extends Activity {
                 mathView.setVisibility(View.GONE);
             }
         }
+        checkSleepWake();
         if (st.has("brightness")) applyBrightness(st.optInt("brightness", 0));
         render();
     }
@@ -779,9 +931,10 @@ public class MainActivity extends Activity {
             timerTv.setTextColor(remain >= 0 && remain <= 30000 ? RED : Color.WHITE);
         }
 
-        if ("moving".equals(status)) {
+        if ("moving".equals(status) || "waiting".equals(status)) {
+            // waiting = auto-start is off: keep the MOVE! screen up until the teacher presses Start
             moveLayout.setVisibility(View.VISIBLE);
-            moveCount.setText(String.valueOf(Math.max(0, (remain + 999) / 1000)));
+            moveCount.setText("waiting".equals(status) ? "" : String.valueOf(Math.max(0, (remain + 999) / 1000)));
         } else {
             moveLayout.setVisibility(View.GONE);
         }
@@ -886,8 +1039,21 @@ public class MainActivity extends Activity {
             box.addView(release);
         }
 
+        if (!canTurnScreenOff()) {
+            Button allow = new Button(this);
+            allow.setText("Allow screen off (for Sleep)");
+            allow.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    askScreenOffPermission();
+                }
+            });
+            box.addView(allow);
+        }
+
         TextView ver = new TextView(this);
-        ver.setText("Station Display " + BuildConfig.VERSION_NAME + (isDeviceOwner() ? " · locked down" : ""));
+        ver.setText("Station Display " + BuildConfig.VERSION_NAME + (isDeviceOwner() ? " · locked down" : "")
+                + (canTurnScreenOff() ? " · screen off allowed" : " · screen off not allowed"));
         ver.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         ver.setPadding(0, dp(14), 0, 0);
         box.addView(ver);
@@ -914,6 +1080,7 @@ public class MainActivity extends Activity {
                         applyOrientation();
                         hideSystemBars();
                         render();
+                        if (firstRun) askScreenOffPermissionOnce();
                     }
                 });
         if (!firstRun) b.setNegativeButton("Cancel", null);
