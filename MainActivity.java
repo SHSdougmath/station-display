@@ -84,6 +84,7 @@ public class MainActivity extends Activity {
     private String lastError = "";
     private String contentText = "";
     private boolean showingImage = false;
+    private boolean fullImage = false;      // a picture station: the image gets the whole screen
 
     // Views
     private FrameLayout root;
@@ -91,6 +92,8 @@ public class MainActivity extends Activity {
     private FrameLayout sleepLayout;
     private LinearLayout bar;
     private FrameLayout card;
+    private TextView cornerTimer;
+    private View spacer;
     private TextView badge, roundTv, timerTv, problemTv, bigNum, bigName, bigMsg, moveBig, moveMsg, moveCount, pausedTv;
     private ImageView problemImg;
     private WebView mathView;
@@ -436,7 +439,8 @@ public class MainActivity extends Activity {
         card.setBackground(rounded(Color.WHITE, 16));
         LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(-1, 0, 82f);
         mainLayout.addView(card, cardLp);
-        mainLayout.addView(new View(this), new LinearLayout.LayoutParams(-1, 0, 3f));
+        spacer = new View(this);
+        mainLayout.addView(spacer, new LinearLayout.LayoutParams(-1, 0, 3f));
 
         problemTv = text(0xFF111111, false);
         problemTv.setGravity(Gravity.CENTER);
@@ -472,6 +476,15 @@ public class MainActivity extends Activity {
         FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END);
         plp.setMargins(0, 0, dp(28), dp(28));
         root.addView(pausedTv, plp);
+
+        // ---- small timer in the top-right corner, used when a picture fills the screen
+        cornerTimer = text(Color.WHITE, true);
+        cornerTimer.setGravity(Gravity.CENTER);
+        cornerTimer.setSingleLine(true);
+        cornerTimer.setBackground(rounded(0xB3000000, 14));
+        cornerTimer.setVisibility(View.GONE);
+        FrameLayout.LayoutParams ctlp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
+        root.addView(cornerTimer, ctlp);
 
         // ---- idle / done / setup screen
         idleLayout = new LinearLayout(this);
@@ -578,12 +591,17 @@ public class MainActivity extends Activity {
         float vmin = Math.min(w, h) / 100f;
         int side = Math.round(w * 0.03f);
 
-        mainLayout.setPadding(side, 0, side, 0);
+        mainLayout.setPadding(fullImage ? 0 : side, 0, fullImage ? 0 : side, 0);
+        cornerTimer.setTextSize(TypedValue.COMPLEX_UNIT_PX, vmin * 7.5f);
+        cornerTimer.setPadding(Math.round(vmin * 2.2f), Math.round(vmin * 0.9f), Math.round(vmin * 2.2f), Math.round(vmin * 0.9f));
+        FrameLayout.LayoutParams ctlp = (FrameLayout.LayoutParams) cornerTimer.getLayoutParams();
+        ctlp.setMargins(0, Math.round(vmin * 1.6f), Math.round(vmin * 1.6f), 0);
+        cornerTimer.setLayoutParams(ctlp);
         badge.setTextSize(TypedValue.COMPLEX_UNIT_PX, vmin * 6f);
         badge.setPadding(Math.round(vmin * 2.5f), Math.round(vmin * 1.2f), Math.round(vmin * 2.5f), Math.round(vmin * 1.2f));
         roundTv.setTextSize(TypedValue.COMPLEX_UNIT_PX, vmin * 4f);
         timerTv.setTextSize(TypedValue.COMPLEX_UNIT_PX, vmin * 8f);
-        int pad = Math.round(Math.min(w, h) * 0.035f);
+        int pad = fullImage ? 0 : Math.round(Math.min(w, h) * 0.035f);
         card.setPadding(pad, pad, pad, pad);
 
         bigNum.setTextSize(TypedValue.COMPLEX_UNIT_PX, h * 0.38f);
@@ -729,6 +747,20 @@ public class MainActivity extends Activity {
                 }
             } else {
                 r.text = c.optString("text", "");
+                // A problem cell that is just a link to a picture (a .png/.jpg or a Google Drive file link)
+                String imgUrl = imageLink(r.text);
+                if (imgUrl != null) {
+                    try {
+                        r.bmp = decodeBitmap(httpBytes(imgUrl));
+                    } catch (Exception e) {
+                        r.bmp = null;
+                    }
+                    if (r.bmp != null) {
+                        r.type = "img";
+                    } else {
+                        r.text = "Couldn't load that image. If it's in Google Drive, share it as \"Anyone with the link\".";
+                    }
+                }
             }
         }
         return r;
@@ -767,6 +799,25 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** If the text is only a picture link, returns a direct download link for it; otherwise null. */
+    static String imageLink(String text) {
+        if (text == null) return null;
+        String t = text.trim();
+        if (t.indexOf(' ') >= 0 || t.indexOf('\n') >= 0 || t.indexOf('$') >= 0) return null;
+        if (!(t.startsWith("http://") || t.startsWith("https://"))) return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("drive\\.google\\.com/(?:file/d/|open\\?id=|uc\\?(?:export=\\w+&)?id=)([A-Za-z0-9_-]{10,})")
+                .matcher(t);
+        if (m.find()) return "https://drive.google.com/uc?export=download&id=" + m.group(1);
+        String lower = t.toLowerCase(java.util.Locale.US);
+        int q = lower.indexOf('?');
+        String path = q >= 0 ? lower.substring(0, q) : lower;
+        if (path.endsWith(".png") || path.endsWith(".jpg") || path.endsWith(".jpeg") || path.endsWith(".gif") || path.endsWith(".webp"))
+            return t;
+        if (lower.contains("googleusercontent.com/")) return t;
+        return null;
+    }
+
     private static Bitmap decodeBitmap(byte[] data) {
         BitmapFactory.Options o = new BitmapFactory.Options();
         o.inJustDecodeBounds = true;
@@ -785,6 +836,7 @@ public class MainActivity extends Activity {
         offset = st.optLong("now", r.at) - r.at;
         if (r.hasContent) {
             haveHash = st.optString("hash", "");
+            setFullImage("img".equals(r.type) && r.bmp != null, r.bmp);
             if ("img".equals(r.type) && r.bmp != null) {
                 showingImage = true;
                 contentText = "";
@@ -818,6 +870,27 @@ public class MainActivity extends Activity {
         checkSleepWake();
         if (st.has("brightness")) applyBrightness(st.optInt("brightness", 0));
         render();
+    }
+
+    /** Picture stations: drop the top bar and the white card so the picture fills every pixel. Only the corner timer stays. */
+    private void setFullImage(boolean on, Bitmap bmp) {
+        if (on && bmp != null) {
+            try {
+                // fill any letterbox with the picture's own edge colour
+                root.setBackgroundColor(bmp.getPixel(0, bmp.getHeight() / 2));
+            } catch (Exception ignored) {
+                root.setBackgroundColor(Color.BLACK);
+            }
+        } else {
+            root.setBackgroundColor(NAVY);
+        }
+        if (on == fullImage) return;
+        fullImage = on;
+        bar.setVisibility(on ? View.GONE : View.VISIBLE);
+        spacer.setVisibility(on ? View.GONE : View.VISIBLE);
+        card.setBackground(on ? null : rounded(Color.WHITE, 16));
+        problemImg.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        sizeChrome();
     }
 
     private void onFail(Exception e) {
@@ -898,6 +971,7 @@ public class MainActivity extends Activity {
             idleLayout.setVisibility(View.VISIBLE);
             moveLayout.setVisibility(View.GONE);
             pausedTv.setVisibility(View.GONE);
+            cornerTimer.setVisibility(View.GONE);
             bigNum.setText(String.valueOf(n));
             bigName.setText(custom ? name : (st == null ? "" : st.optString("title", "")));
             if (lastError.length() > 0 && (st == null || fails >= 3)) {
@@ -939,6 +1013,16 @@ public class MainActivity extends Activity {
             moveLayout.setVisibility(View.GONE);
         }
         pausedTv.setVisibility("paused".equals(status) ? View.VISIBLE : View.GONE);
+
+        boolean onProblem = !("moving".equals(status) || "waiting".equals(status));
+        if (fullImage && onProblem) {
+            cornerTimer.setText(timerTv.getText());
+            boolean late = timerTv.getCurrentTextColor() == RED;
+            ((GradientDrawable) cornerTimer.getBackground()).setColor(late ? 0xE6D62828 : 0xB3000000);
+            cornerTimer.setVisibility(View.VISIBLE);
+        } else {
+            cornerTimer.setVisibility(View.GONE);
+        }
     }
 
     // ------------------------------------------------------------------ hidden settings
